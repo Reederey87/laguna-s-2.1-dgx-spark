@@ -1,0 +1,38 @@
+# vllm-laguna.service — systemd USER unit for single-node Laguna-S-2.1-NVFP4 on a
+# NVIDIA DGX Spark (GB10).
+#
+# Install (as the serving user):
+#   mkdir -p ~/.config/systemd/user
+#   cp ~/laguna-s-2.1/deploy/vllm-laguna.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user start vllm-laguna.service       # manual start
+#
+# For boot auto-start (service starts without an interactive login session):
+#   sudo loginctl enable-linger "$USER"
+#   systemctl --user enable vllm-laguna.service
+[Unit]
+Description=vLLM poolside/Laguna-S-2.1-NVFP4 (single-node GB10)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# serve.sh runs preflight itself; SKIP_PREFLIGHT=1 avoids the double run under systemd.
+Environment=SKIP_PREFLIGHT=0
+# Loopback by default (serve.sh default). Uncomment to bind all interfaces so remote
+# clients can reach the API — NOTE: this also exposes the API on the LAN with no auth;
+# tighten to loopback or front it with a proxy/firewall if that matters.
+#Environment=LAGUNA_HOST=0.0.0.0
+ExecStartPre=%h/laguna-s-2.1/deploy/preflight.sh
+ExecStart=%h/laguna-s-2.1/deploy/serve.sh
+# Post-start primer (non-fatal): health wait + chat/tool/long-prefill probes so the
+# first real request doesn't pay JIT/autotune cold costs.
+ExecStartPost=-%h/laguna-s-2.1/deploy/warmup.sh
+Restart=on-failure
+RestartSec=30
+# Cold start ≈ 15 min (weights + JIT + graph capture); do not let systemd kill it early.
+TimeoutStartSec=1800
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

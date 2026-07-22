@@ -1,0 +1,12 @@
+[Unit]
+Description=vLLM Laguna inference watchdog (restarts vllm-laguna when /health lies)
+
+[Service]
+Type=oneshot
+# oneshot disables the default start timeout, but cap explicitly anyway:
+# worst case = probe 90s + triage (scrape 10 + retry 30 + scrape 10) + unit restart
+# hand-off ≈ 3 min. 600s clears it. (The restart itself returns immediately; the
+# ~15-min cold start happens inside vllm-laguna.service, where /health-down means
+# this watchdog stays out of the way.)
+TimeoutStartSec=600
+ExecStart=/usr/bin/bash %h/laguna-s-2.1/deploy/watchdog.sh

@@ -1,0 +1,13 @@
+# Local state and caches
+cache/
+*.log
+.env
+__pycache__/
+
+# Bench output
+bench/results/
+results/
+bench/prompts/
+
+# Watchdog runtime state
+deploy/.watchdog-*.state
