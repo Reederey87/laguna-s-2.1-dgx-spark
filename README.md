@@ -84,8 +84,8 @@ Full walkthrough incl. boot auto-start (linger), day-2 ops and rollback:
   single-unit restart.
 - `deploy/vllm-laguna.service` — systemd user unit (preflight gate, warmup post-start,
   30-min start timeout for the cold boot).
-- `bench/` — the AB harness used to produce every number in the docs (Mac-side orchestrator
-  over SSH + stdlib-only on-node bench client + the a0–a5 profiles with verdicts).
+- `bench/` — `bench.py`, the stdlib-only on-node bench client used to produce every
+  number in the docs, plus a short guide to measuring your own deployment.
 - `docs/` — [DEPLOYMENT](docs/DEPLOYMENT.md) · [TUNING](docs/TUNING.md) ·
   [PERFORMANCE](docs/PERFORMANCE.md).
 

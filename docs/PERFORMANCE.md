@@ -2,8 +2,8 @@
 
 All numbers measured on our node: vLLM 0.25.1 (cu130), FlashInfer 0.6.15.dev20260712,
 `--gpu-memory-utilization 0.85`, 256K max-model-len, DFlash speculative decoding.
-Harness: [`bench/`](../bench/README.md) (Mac-side orchestrator + stdlib-only on-node
-streaming bench client). Run date: 2026-07-22.
+Harness: [`bench/bench.py`](../bench/README.md) (stdlib-only on-node streaming bench
+client). Run date: 2026-07-22.
 
 ## Headline numbers (production config = a1 adopted)
 
@@ -55,7 +55,7 @@ Verdicts:
 
 ## A5: DFlash depth (n=15 vs n=8) at production sampling
 
-Dedicated probe: `ab-bench.py --server-defaults` (no client sampling params → the server's
+Dedicated probe: `bench.py --server-defaults` (no client sampling params → the server's
 temp 0.7 / top_p 0.95 / top_k 20 rule), c1, 400-token replies, prose + code prompt classes,
 production otherwise on the adopted a1 config.
 
@@ -70,9 +70,10 @@ classes. Poolside's card value is the right one for GB10.
 
 ## Measurement method
 
-Per profile, `bench/ab-run.sh` does: stop the systemd service + watchdog timer → start
-`deploy/serve.sh` with the profile env (manual, loopback :8000) → wait `/health` → record
-startup facts (KV pool size, `max_num_scheduled_tokens`, CUDA-graph pool) → warmup → bench:
+Per profile: stop the systemd service + watchdog timer → start `deploy/serve.sh` with the
+profile's env overrides (manual foreground serve, loopback :8000) → wait `/health` → record
+startup facts (KV pool size, `max_num_scheduled_tokens`, CUDA-graph pool) → warmup → bench
+with `bench.py`:
 
 - `decode-c1` concurrency 1 × 3 reps, `decode-c4` c4 × 2, `decode-c8` c8 × 2 —
   512-token decodes, thinking pinned off (`enable_thinking: false`), nonce-prefixed prompts.

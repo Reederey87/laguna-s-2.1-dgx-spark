@@ -150,11 +150,11 @@ are served offline (`HF_HUB_OFFLINE=1` default); a re-pull only happens when you
 
 **Roll back a knob:** every serve parameter is an env var in `serve.sh`, so any experiment
 reverts by unsetting it (or `MAX_NUM_BATCHED_TOKENS=none` for the engine default) and
-restarting. The `bench/profiles/*.env` files document the measured alternatives.
+restarting. The measured alternatives and their verdicts are in
+[PERFORMANCE.md](PERFORMANCE.md).
 
 **Update the scripts:** edit locally, rsync the repo over again, `systemctl --user
-daemon-reload` if units changed, restart. The bench harness rsyncs `serve.sh` + the bench
-client automatically on every run.
+daemon-reload` if units changed, restart.
 
 **Memory-pressure co-tenants:** unified memory is exclusive — nothing else holding tens of
 GiB (another LLM server, a big docker job) can run alongside. Preflight hard-fails on a

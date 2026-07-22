@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Laguna AB micro-benchmark client. Measures TTFT / tok/s / spec-decode
-acceptance against the loopback vLLM API. Runs ON the Spark (pushed there
-by ab-run.sh via rsync) so all HTTP calls are loopback.
+"""Laguna micro-benchmark client. Measures TTFT / tok/s / spec-decode
+acceptance against the vLLM API. Run it ON the Spark (copy it there or run
+over ssh) so all HTTP calls are loopback and numbers are network-clean.
 
 Stdlib only: urllib, json, threading, time, argparse, uuid, re, statistics.
 Emits exactly one JSON object to stdout; all progress/errors go to stderr so
-stdout stays parseable by the Mac-side orchestrator (ab-run.sh).
+stdout stays parseable by a calling script.
 
-Exit code: 0 unless more than 25% of requests errored (nonzero exit is the
-ONLY signal ab-run.sh needs beyond the JSON body).
+Exit code: 0 unless more than 25% of requests errored.
 """
 import argparse
 import json
@@ -96,7 +95,7 @@ def scrape(url, timeout=10):
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             return resp.read().decode("utf-8", "replace")
     except Exception as exc:  # noqa: BLE001 - metrics scrape is best-effort
-        print(f"ab-bench: metrics scrape failed: {exc}", file=sys.stderr)
+        print(f"bench: metrics scrape failed: {exc}", file=sys.stderr)
         return ""
 
 
@@ -292,7 +291,7 @@ def main():
         per_request.extend(results)
         batches.append(summary)
         print(
-            f"ab-bench: batch {b} done — wall={summary['wall_s']}s "
+            f"bench: batch {b} done — wall={summary['wall_s']}s "
             f"agg_toks_wall={summary['agg_toks_wall']} "
             f"agg_toks_metrics={summary['agg_toks_metrics']}",
             file=sys.stderr,
@@ -326,7 +325,7 @@ def main():
 
     if error_rate > 0.25:
         print(
-            f"ab-bench: FAIL — {errored}/{total} requests errored (>25%)",
+            f"bench: FAIL — {errored}/{total} requests errored (>25%)",
             file=sys.stderr,
         )
         sys.exit(1)

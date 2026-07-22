@@ -1,69 +1,46 @@
-# bench/ — AB bench harness (Mac-side, over SSH)
+# bench/ — measure your deployment
 
-The harness that produced every number in [../docs/PERFORMANCE.md](../docs/PERFORMANCE.md).
-A Mac-side orchestrator drives profiles on the Spark over SSH; the bench client itself runs
-**on the Spark** so all HTTP is loopback.
-
-## Files
-
-- `ab-run.sh` — Mac-side orchestrator. Per profile: stop `vllm-laguna.service` +
-  `vllm-laguna-watchdog.timer` on the Spark → start `../deploy/serve.sh` with the profile
-  env (manual, loopback :8000) → wait `/health` → startup facts → warmup → bench →
-  teardown. The service + watchdog are restored on exit (EXIT trap), even on
-  failure/Ctrl-C.
-- `ab-bench.py` — stdlib-only streaming bench client (runs ON the Spark via ssh; JSON to
-  stdout, progress to stderr). Sends `chat_template_kwargs {"enable_thinking": false}` so
-  thinking can't eat short probes; scrapes `/metrics` around each batch for DFlash
-  acceptance deltas and engine-side aggregate tok/s.
-- `launch-ab.sh` — on-Spark manual-serve launcher. Exists because
-  `ssh host "… nohup … &"` on a compound command keeps ssh's fds open and hangs the
-  orchestrator; invoked as a single simple command so ssh returns immediately.
-- `profiles/*.env` — one KEY=VAL list per profile; injected via `env` into `serve.sh`
-  (every knob is a serve.sh env override; baseline = `MAX_NUM_BATCHED_TOKENS=none`).
-- `results/<profile>__<ts>/` — per-run JSON + stderr + startup-facts.txt + warmup.log
-  (gitignored).
-
-## Run
+`bench.py` is the stdlib-only streaming bench client that produced every number in
+[../docs/PERFORMANCE.md](../docs/PERFORMANCE.md). Use it to verify your own deployment
+reaches the same figures. Run it **on the Spark** so all HTTP is loopback:
 
 ```bash
-export SPARK_SSH=your-spark-host        # SSH alias/hostname (default: "spark")
-bash bench/ab-run.sh a0-baseline        # one profile (~10-15 min)
-bash bench/ab-run.sh all                # full matrix (~1.5-2 h)
-bash bench/ab-run.sh a1-batched8192 --decode-tokens 1024
+scp bench/bench.py your-spark-host:~/
+ssh your-spark-host 'python3 ~/bench.py --help'
 ```
 
-Prereqs: the deploy tree live on the Spark at `~/laguna-s-2.1` (install.sh done, weights
-pulled). The orchestrator rsyncs the latest `serve.sh` / `ab-bench.py` / `launch-ab.sh`
-and generates the ~8K/~32K prompt files on every run.
+No dependencies beyond Python 3 (urllib/json/threading). It emits one JSON object to
+stdout (per-request TTFT/tok/s, batch aggregates, DFlash acceptance deltas scraped from
+`/metrics`); progress and errors go to stderr.
 
-**Production impact:** the Laguna endpoint is down for the duration; the final restore
-brings `vllm-laguna.service` + the watchdog timer back.
+## Typical measurements
 
-## Profiles and verdicts
+```bash
+# Single-stream decode, production sampling (the headline 20.9 prose / 43.0 code tok/s):
+python3 ~/bench.py --server-defaults --concurrency 1 --reps 3 --max-tokens 400 --label decode-c1
 
-| Profile | Knobs | Verdict |
-|---|---|---|
-| `a0-baseline` | `MAX_NUM_BATCHED_TOKENS=none` (engine default 2048 on GB10) | Reference. Scheduled tokens stuck at 1600 under DFlash; engine warns |
-| `a1-batched8192` | `MAX_NUM_BATCHED_TOKENS=8192` | **ADOPTED** — TTFT −23% @8K / −13% @32K, decode unchanged, KV −5.8% |
-| `a3-maxseqs4-batched8192` | `MAX_NUM_SEQS=4` + 8192 | REJECTED — KV pool shrank (815,520; refutes a third-party 926K claim), c8 collapses to 37.1 tok/s |
-| `a4-batched16384` | `MAX_NUM_BATCHED_TOKENS=16384` | REJECTED — −14% KV pool, no meaningful TTFT gain over a1 |
-| `a5-spec8-batched8192` | `NUM_SPEC_TOKENS=8` + 8192 | REJECTED — prose 15.7 vs 20.9, code 34.3 vs 43.0 tok/s at production sampling; n=15 kept |
+# Batch decode, engine-comparable temp-1.0 probes (the c1/c4/c8 matrix numbers):
+python3 ~/bench.py --concurrency 8 --reps 2 --max-tokens 512 --label decode-c8
 
-## Reading results
+# TTFT at a long prompt (needs a prompt file; ~8K tokens here):
+python3 ~/bench.py --prompt-file prompt-8k.txt --concurrency 1 --reps 2 --max-tokens 32 --label ttft-8k
+```
 
-Each `decode-c*.json` / `ttft-*.json` carries per-request TTFT/tok/s, batch aggregates
-(wall-clock + `/metrics`-derived), and DFlash acceptance deltas
-(`_derived_mean_accepted_len`, `_derived_accept_rate`, per-position).
-`startup-facts.txt` has the KV pool size, the `max_num_scheduled_tokens` warning
-(present = still on the 2048 default), and the CUDA-graph pool.
+Useful flags: `--url` (default `http://127.0.0.1:8000/v1`), `--model`,
+`--max-tokens` (default 2048), `--concurrency`, `--reps`, `--prompt-file`,
+`--server-defaults`.
 
-Compare profiles on: KV pool tokens, TTFT p50 @8K/32K, decode c1/c4/c8 tok/s, mean
-accepted length. Mind the caveats in [../docs/PERFORMANCE.md](../docs/PERFORMANCE.md):
-KV pool varies ±15% boot-to-boot (compare only within a run), and TTFT p50 blends
-prefix-cache-warm reps.
+**Sampling matters:** default probes send temp 1.0 (engine-comparable, but suppresses
+DFlash acceptance). `--server-defaults` sends no sampling params, so the server's
+temp 0.7 / top_p 0.95 / top_k 20 rule applies and spec-decode acceptance is realistic —
+that's how the headline numbers were measured. The client pins
+`chat_template_kwargs {"enable_thinking": false}` so thinking can't eat short probes.
 
-**Sampling matters:** the matrix runs temp 1.0 probes (comparable across engines, but
-suppresses DFlash acceptance). For realistic spec-decode numbers use
-`ab-bench.py --server-defaults` — no client sampling params, so the server's temp 0.7 /
-top_p 0.95 / top_k 20 rule applies (how the a5 probe and the headline 20.9/43.0 tok/s
-were measured).
+## Tuning experiments
+
+Every serve parameter is an env override in `../deploy/serve.sh`, so an experiment is:
+stop the service → run `VAR=value bash deploy/serve.sh` in the foreground → bench →
+restart the service. The measured matrix (what we tried, what won, what was rejected and
+why) is documented in [../docs/TUNING.md](../docs/TUNING.md) and
+[../docs/PERFORMANCE.md](../docs/PERFORMANCE.md) — read those before re-running rejected
+knobs.

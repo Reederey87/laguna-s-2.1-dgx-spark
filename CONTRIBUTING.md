@@ -12,7 +12,7 @@ A few ground rules that keep this repo useful:
 - **Keep scripts generic.** No hostnames, IPs, usernames, or site-specific paths in
   scripts/docs — everything host-specific is an env var (`SPARK_SSH`, `LAGUNA_HOME`, …).
 - **Script changes:** run `bash -n` on every touched `.sh` and
-  `python3 -m py_compile bench/ab-bench.py` before submitting. ShellCheck-clean is a plus.
+  `python3 -m py_compile bench/bench.py` before submitting. ShellCheck-clean is a plus.
 - Don't bump the pins (`VLLM_VERSION`, `FLASHINFER_PIN`) without a tested reason — the
   model card validates vLLM 0.25.1 + FlashInfer 0.6.15.dev20260712 for this model.
 
