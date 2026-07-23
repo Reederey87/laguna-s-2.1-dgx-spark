@@ -5,6 +5,18 @@ All numbers measured on our node: vLLM 0.25.1 (cu130), FlashInfer 0.6.15.dev2026
 Harness: [`bench/bench.py`](../bench/README.md) (stdlib-only on-node streaming bench
 client). Run date: 2026-07-22.
 
+> **2026-07-23 — re-validated on Poolside's spinquantless re-quant.** Upstream replaced the
+> tensor weights (`main` → `0761412` "nvfp4: spinquantless norot weights, 256K": new
+> quantization, 14→15 safetensor shards, layer-0 dense MLP now quantized). The numbers below
+> were measured on the original quant; spot-checks on the new weights show them still
+> holding — decode 20.7 tok/s prose (vs 20.9), KV pool 874,988 tokens (vs 869,932), smoke
+> gate 7/7. One caveat: the DFlash draft repo was not updated alongside (still the
+> 2026-07-21 initial release), and the `spec_decode` accepted/drafts ratio now reads
+> ~2.0–2.5 vs the vendor's 2.9–3.1 reference — measured decode throughput is unchanged, so
+> we read this as a draft/quant mismatch in the acceptance metric, not a real regression.
+> Re-check when a re-matched draft ships. No kit changes were needed (no revision pins
+> anywhere — `install.sh` pulls current `main`).
+
 ## Headline numbers (production config = a1 adopted)
 
 | Metric | Value |
